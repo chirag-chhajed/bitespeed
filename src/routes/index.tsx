@@ -1,13 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState } from 'react'
 import {
   ReactFlow,
-  MiniMap,
   Controls,
   Background,
+  addEdge,
   useNodesState,
   useEdgesState,
-  addEdge,
   type Connection,
   type Edge,
   type Node,
@@ -38,7 +37,6 @@ const nodesAtom = atomWithStorage<Node[]>('chatbot-nodes', [
 ])
 
 const edgesAtom = atomWithStorage<Edge[]>('chatbot-edges', [])
-
 const nodeCounterAtom = atomWithStorage('chatbot-node-counter', 2)
 
 // Custom Message Node Component
@@ -47,7 +45,7 @@ function MessageNode({ data, isConnectable }: NodeProps) {
     <div className="px-4 py-2 shadow-sm rounded-lg bg-card border-2 border-border min-w-[200px]">
       <Handle
         type="target"
-        position={Position.Top}
+        position={Position.Left}
         isConnectable={isConnectable}
         className="w-16 !bg-primary"
       />
@@ -56,11 +54,11 @@ function MessageNode({ data, isConnectable }: NodeProps) {
           <MessageCircle className="w-4 h-4" />
           Send Message
         </div>
-        <div className="text-muted-foreground text-sm mt-1">{data.message}</div>
+        <div className="text-muted-foreground text-sm mt-1">{String(data.message)}</div>
       </div>
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={Position.Right}
         isConnectable={isConnectable}
         className="w-16 !bg-primary"
       />
@@ -73,25 +71,81 @@ const nodeTypes = {
 }
 
 function App() {
+  // Get persisted state from atoms
   const [persistedNodes, setPersistedNodes] = useAtom(nodesAtom)
   const [persistedEdges, setPersistedEdges] = useAtom(edgesAtom)
   const [nodeIdCounter, setNodeIdCounter] = useAtom(nodeCounterAtom)
   
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  // Use React Flow's hooks for proper node/edge management
+  const [nodes, setNodes, onNodesChange] = useNodesState(persistedNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(persistedEdges)
   
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [messageText, setMessageText] = useState('')
   const [showSettings, setShowSettings] = useState(false)
 
-  // Initialize React Flow state from persisted atoms
-  useEffect(() => {
-    setNodes(persistedNodes)
-    setEdges(persistedEdges)
-  }, [persistedNodes, persistedEdges, setNodes, setEdges])
+  // Sync to localStorage when nodes change
+  const handleNodesChange = useCallback((changes: any) => {
+    onNodesChange(changes)
+    // Sync to localStorage after React Flow processes the changes
+    setTimeout(() => {
+      setNodes((currentNodes) => {
+        setPersistedNodes(currentNodes)
+        return currentNodes
+      })
+    }, 0)
+  }, [onNodesChange, setNodes, setPersistedNodes])
+
+  // Sync to localStorage when edges change
+  const handleEdgesChange = useCallback((changes: any) => {
+    onEdgesChange(changes)
+    // Sync to localStorage after React Flow processes the changes
+    setTimeout(() => {
+      setEdges((currentEdges) => {
+        setPersistedEdges(currentEdges)
+        return currentEdges
+      })
+    }, 0)
+  }, [onEdgesChange, setEdges, setPersistedEdges])
+
+  // Helper function to check if all nodes are connected (no isolated nodes)
+  const areAllNodesConnected = useCallback(() => {
+    if (nodes.length <= 1) return true // Single node or empty is considered "connected"
+    
+    const nodeIds = new Set(nodes.map(node => node.id))
+    const connectedNodeIds = new Set<string>()
+    
+    edges.forEach(edge => {
+      connectedNodeIds.add(edge.source)
+      connectedNodeIds.add(edge.target)
+    })
+    
+    // Check if all nodes are part of at least one connection
+    return nodes.every(node => connectedNodeIds.has(node.id))
+  }, [nodes, edges])
+
+  // Helper function to get start and end nodes
+  const getStartAndEndNodes = useCallback(() => {
+    const sourceNodes = new Set(edges.map(edge => edge.source))
+    const targetNodes = new Set(edges.map(edge => edge.target))
+    
+    // Start nodes: have outgoing edges but no incoming edges
+    const startNodes = nodes.filter(node => 
+      sourceNodes.has(node.id) && !targetNodes.has(node.id)
+    )
+    
+    // End nodes: have incoming edges but no outgoing edges  
+    const endNodes = nodes.filter(node => 
+      targetNodes.has(node.id) && !sourceNodes.has(node.id)
+    )
+    
+    return { startNodes, endNodes }
+  }, [nodes, edges])
 
   const onConnect = useCallback(
     (params: Connection) => {
+      if (!params.source || !params.target) return
+
       // Prevent self-connection
       if (params.source === params.target) {
         alert('Cannot connect a node to itself!')
@@ -110,16 +164,27 @@ function App() {
         return
       }
 
+      // Prevent start and end nodes from connecting to each other
+      const { startNodes, endNodes } = getStartAndEndNodes()
+      const isSourceStart = startNodes.some(node => node.id === params.source)
+      const isTargetEnd = endNodes.some(node => node.id === params.target)
+      
+      // If we're trying to connect a start node to an end node, prevent it
+      if (isSourceStart && isTargetEnd && edges.length > 0) {
+        alert('Cannot connect start and end nodes directly!')
+        return
+      }
+
       const newEdges = addEdge(params, edges)
       setEdges(newEdges)
       setPersistedEdges(newEdges)
     },
-    [edges, setEdges, setPersistedEdges],
+    [edges, setEdges, setPersistedEdges, getStartAndEndNodes],
   )
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     setSelectedNodeId(node.id)
-    setMessageText(node.data.message || '')
+    setMessageText((node.data.message as string) || '')
     setShowSettings(true)
   }, [])
 
@@ -190,28 +255,16 @@ function App() {
   }
 
   const saveChanges = () => {
-    // Currently does nothing as specified
-    alert('Save changes clicked - currently does nothing')
+    if (!areAllNodesConnected()) {
+      alert('Cannot save! All nodes must be connected to the flow.')
+      return
+    }
+    
+    // Currently does nothing as specified, but now validates connections
+    alert('Flow saved successfully! All nodes are properly connected.')
   }
 
-  // Custom onChange handlers that sync to localStorage
-  const handleNodesChange = useCallback((changes: any) => {
-    onNodesChange(changes)
-    // Get the updated nodes after the change and persist them
-    setNodes((currentNodes) => {
-      setPersistedNodes(currentNodes)
-      return currentNodes
-    })
-  }, [onNodesChange, setPersistedNodes, setNodes])
-
-  const handleEdgesChange = useCallback((changes: any) => {
-    onEdgesChange(changes)
-    // Get the updated edges after the change and persist them
-    setEdges((currentEdges) => {
-      setPersistedEdges(currentEdges)
-      return currentEdges
-    })
-  }, [onEdgesChange, setPersistedEdges, setEdges])
+  const canSave = areAllNodesConnected()
 
   return (
     <div className="w-full h-screen flex bg-background">
@@ -226,7 +279,13 @@ function App() {
             <Button onClick={clearAll} variant="outline" size="sm">
               Clear All
             </Button>
-            <Button onClick={saveChanges}>Save Changes</Button>
+            <Button 
+              onClick={saveChanges}
+              disabled={!canSave}
+              variant={canSave ? "default" : "secondary"}
+            >
+              Save Changes
+            </Button>
           </div>
         </div>
 
@@ -244,7 +303,6 @@ function App() {
             className="bg-muted/20"
           >
             <Controls className="bg-card border-border" />
-            <MiniMap className="bg-card border-border" />
             <Background variant="dots" gap={12} size={1} className="opacity-30" />
           </ReactFlow>
         </div>
@@ -336,22 +394,20 @@ function App() {
                     <li>Click "Message" to create new nodes</li>
                     <li>Click on a node to edit its message</li>
                     <li>Drag between handles to connect nodes</li>
-                    <li>Source handles (bottom) can only have one outgoing edge</li>
-                    <li>Target handles (top) can have multiple incoming edges</li>
-                    <li>Nodes cannot connect to themselves</li>
-                    <li>All changes are automatically saved to localStorage</li>
+                    <li>Source handles (right) can only have one outgoing edge</li>
+                    <li>Target handles (left) can have multiple incoming edges</li>
+                    <li>Start and end nodes cannot connect directly</li>
+                    <li>All nodes must be connected to save</li>
                   </ul>
                 </div>
               </CardContent>
             </Card>
 
-            {nodes.length > 0 && (
-              <Card className="bg-muted/30">
+            {!canSave && nodes.length > 1 && (
+              <Card className="bg-destructive/10 border-destructive/20">
                 <CardContent className="pt-6">
-                  <div className="text-sm text-muted-foreground">
-                    <p><strong className="text-foreground">Stats:</strong></p>
-                    <p>Nodes: {nodes.length}</p>
-                    <p>Connections: {edges.length}</p>
+                  <div className="text-sm text-destructive">
+                    <p><strong>Warning:</strong> Some nodes are not connected to the flow.</p>
                   </div>
                 </CardContent>
               </Card>
