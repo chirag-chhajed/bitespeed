@@ -1,7 +1,9 @@
-import type { Connection, Edge, Node, NodeProps } from '@xyflow/react'
+import type { Connection, Edge, EdgeChange, Node, NodeChange, NodeProps } from '@xyflow/react'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
   Background,
   Controls,
   Handle,
@@ -30,13 +32,16 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import '@xyflow/react/dist/style.css'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 export const Route = createFileRoute('/')({
   component: App,
 })
 
 // Default nodes - only used for initial state
-const defaultNodes: Node[] = [
+type MessageData = { message: string }
+
+const defaultNodes: Node<MessageData>[] = [
   {
     id: '1',
     type: 'messageNode',
@@ -46,12 +51,12 @@ const defaultNodes: Node[] = [
 ]
 
 // Atoms for persisting state
-const nodesAtom = atomWithStorage<Node[]>('chatbot-nodes', defaultNodes)
+const nodesAtom = atomWithStorage<Node<MessageData>[]>('chatbot-nodes', defaultNodes)
 const edgesAtom = atomWithStorage<Edge[]>('chatbot-edges', [])
 const nodeCounterAtom = atomWithStorage('chatbot-node-counter', 2)
 
 // Custom Message Node Component
-function MessageNode({ data, isConnectable }: NodeProps) {
+function MessageNode({ data, isConnectable }: NodeProps<MessageData>) {
   return (
     <div className="px-3 py-2 shadow-sm rounded-lg bg-card border-2 border-border min-w-[160px] sm:min-w-[200px] max-w-[200px] sm:max-w-none">
       <Handle
@@ -90,25 +95,14 @@ function App() {
   const [nodeIdCounter, setNodeIdCounter] = useAtom(nodeCounterAtom)
 
   // Use React Flow's hooks - initialize with persisted data!
-  const [nodes, setNodes, onNodesChange] = useNodesState(persistedNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(persistedEdges)
+  const [nodes, setNodes] = useNodesState(persistedNodes)
+  const [edges, setEdges] = useEdgesState(persistedEdges)
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [messageText, setMessageText] = useState('')
   const [showSettings, setShowSettings] = useState(false)
-  const [isMobile, setIsMobile] = useState(false)
-
-  // Check if mobile on mount and resize
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768)
-    }
-
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
+  const isMobile = useIsMobile()
 
   // Sync React Flow state with persisted atoms when they change
   useEffect(() => {
@@ -121,30 +115,26 @@ function App() {
 
   // Sync to localStorage when nodes change
   const handleNodesChange = useCallback(
-    (changes: any) => {
-      onNodesChange(changes)
-      setTimeout(() => {
-        setNodes((currentNodes) => {
-          setPersistedNodes(currentNodes)
-          return currentNodes
-        })
-      }, 0)
+    (changes: NodeChange[]) => {
+      setNodes((currentNodes) => {
+        const next = applyNodeChanges(changes, currentNodes)
+        setPersistedNodes(next)
+        return next
+      })
     },
-    [onNodesChange, setNodes, setPersistedNodes],
+    [setNodes, setPersistedNodes],
   )
 
   // Sync to localStorage when edges change
   const handleEdgesChange = useCallback(
-    (changes: any) => {
-      onEdgesChange(changes)
-      setTimeout(() => {
-        setEdges((currentEdges) => {
-          setPersistedEdges(currentEdges)
-          return currentEdges
-        })
-      }, 0)
+    (changes: EdgeChange[]) => {
+      setEdges((currentEdges) => {
+        const next = applyEdgeChanges(changes, currentEdges)
+        setPersistedEdges(next)
+        return next
+      })
     },
-    [onEdgesChange, setEdges, setPersistedEdges],
+    [setEdges, setPersistedEdges],
   )
 
   // Helper function to detect if adding a connection would create a cycle
@@ -347,9 +337,7 @@ function App() {
         <div className="flex gap-1 sm:gap-2">
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" >
-                Clear
-              </Button>
+              <Button variant="outline">Clear</Button>
             </AlertDialogTrigger>
             <AlertDialogContent className="mx-4 max-w-sm">
               <AlertDialogHeader>
@@ -373,7 +361,6 @@ function App() {
             onClick={saveChanges}
             disabled={!canSave}
             variant={canSave ? 'default' : 'secondary'}
-            
           >
             Save
           </Button>
@@ -458,12 +445,12 @@ function App() {
           </ReactFlow>
 
           {/* Edge Delete Button for Mobile */}
-          {(selectedEdgeId && isMobile) ? (
+          {selectedEdgeId && isMobile ? (
             <div className="absolute top-4 right-4 z-10">
               <Button
                 onClick={deleteSelectedEdge}
                 variant="destructive"
-                
+                aria-label="Delete connection"
                 className="shadow-lg"
               >
                 <X className="w-4 h-4" />
@@ -485,7 +472,6 @@ function App() {
                 onClick={() => setShowSettings(!showSettings)}
                 variant="secondary"
                 className="w-full"
-               
               >
                 <MessageCircle className="w-4 h-4" />
                 Message
@@ -514,18 +500,12 @@ function App() {
                           onClick={updateSelectedNode}
                           className="flex-1"
                           disabled={!messageText.trim()}
-                         
                         >
                           Update Node
                         </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button
-                              variant="destructive"
-                             
-                            >
-                              Delete
-                            </Button>
+                            <Button variant="destructive">Delete</Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent className="mx-4 max-w-sm lg:max-w-lg lg:mx-0">
                             <AlertDialogHeader>
@@ -553,7 +533,6 @@ function App() {
                         onClick={createMessageNode}
                         className="flex-1"
                         disabled={!messageText.trim()}
-                       
                       >
                         Create Node
                       </Button>
@@ -566,7 +545,6 @@ function App() {
                         setMessageText('')
                       }}
                       variant="outline"
-                     
                     >
                       Cancel
                     </Button>
@@ -614,7 +592,7 @@ function App() {
               </Card>
             ) : null}
 
-            {(!canSave && nodes.length > 1) ? (
+            {!canSave && nodes.length > 1 ? (
               <Card className="bg-destructive/10 border-destructive/20">
                 <CardContent className="pt-4 sm:pt-6 p-3 sm:p-6">
                   <div className="text-xs sm:text-sm text-destructive">
@@ -625,7 +603,7 @@ function App() {
                   </div>
                 </CardContent>
               </Card>
-            ):null}
+            ) : null}
           </CardContent>
         </Card>
       </div>
