@@ -9,7 +9,6 @@
   "framework": "react-cra",
   "chosenAddOns": [
     "eslint",
-    "netlify",
     "shadcn",
     "tanstack-query"
   ]
