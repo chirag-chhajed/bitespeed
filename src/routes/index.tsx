@@ -108,6 +108,32 @@ function App() {
     }, 0)
   }, [onEdgesChange, setEdges, setPersistedEdges])
 
+  // Helper function to detect if adding a connection would create a cycle
+  const wouldCreateCycle = useCallback((sourceId: string, targetId: string): boolean => {
+    // Simple cycle detection: check if there's already a path from target to source
+    const visited = new Set<string>()
+    
+    const hasPath = (from: string, to: string): boolean => {
+      if (from === to) return true
+      if (visited.has(from)) return false
+      
+      visited.add(from)
+      
+      // Find all nodes that 'from' connects to
+      const outgoingEdges = edges.filter(edge => edge.source === from)
+      
+      for (const edge of outgoingEdges) {
+        if (hasPath(edge.target, to)) {
+          return true
+        }
+      }
+      
+      return false
+    }
+    
+    return hasPath(targetId, sourceId)
+  }, [edges])
+
   // Helper function to check if all nodes are connected (no isolated nodes)
   const areAllNodesConnected = useCallback(() => {
     if (nodes.length <= 1) return true // Single node or empty is considered "connected"
@@ -122,24 +148,6 @@ function App() {
     
     // Check if all nodes are part of at least one connection
     return nodes.every(node => connectedNodeIds.has(node.id))
-  }, [nodes, edges])
-
-  // Helper function to get start and end nodes
-  const getStartAndEndNodes = useCallback(() => {
-    const sourceNodes = new Set(edges.map(edge => edge.source))
-    const targetNodes = new Set(edges.map(edge => edge.target))
-    
-    // Start nodes: have outgoing edges but no incoming edges
-    const startNodes = nodes.filter(node => 
-      sourceNodes.has(node.id) && !targetNodes.has(node.id)
-    )
-    
-    // End nodes: have incoming edges but no outgoing edges  
-    const endNodes = nodes.filter(node => 
-      targetNodes.has(node.id) && !sourceNodes.has(node.id)
-    )
-    
-    return { startNodes, endNodes }
   }, [nodes, edges])
 
   const onConnect = useCallback(
@@ -164,14 +172,9 @@ function App() {
         return
       }
 
-      // Prevent start and end nodes from connecting to each other
-      const { startNodes, endNodes } = getStartAndEndNodes()
-      const isSourceStart = startNodes.some(node => node.id === params.source)
-      const isTargetEnd = endNodes.some(node => node.id === params.target)
-      
-      // If we're trying to connect a start node to an end node, prevent it
-      if (isSourceStart && isTargetEnd && edges.length > 0) {
-        alert('Cannot connect start and end nodes directly!')
+      // Prevent circular flows - this is key for chatbot flows
+      if (wouldCreateCycle(params.source, params.target)) {
+        alert('Cannot create circular connections! Chatbot flows must be linear.')
         return
       }
 
@@ -179,7 +182,7 @@ function App() {
       setEdges(newEdges)
       setPersistedEdges(newEdges)
     },
-    [edges, setEdges, setPersistedEdges, getStartAndEndNodes],
+    [edges, setEdges, setPersistedEdges, wouldCreateCycle],
   )
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
@@ -396,7 +399,7 @@ function App() {
                     <li>Drag between handles to connect nodes</li>
                     <li>Source handles (right) can only have one outgoing edge</li>
                     <li>Target handles (left) can have multiple incoming edges</li>
-                    <li>Start and end nodes cannot connect directly</li>
+                    <li>Circular connections are not allowed</li>
                     <li>All nodes must be connected to save</li>
                   </ul>
                 </div>
