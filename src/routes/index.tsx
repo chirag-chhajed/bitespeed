@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { MessageCircle } from 'lucide-react'
 import { useAtom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
+import {toast} from 'sonner'
 
 export const Route = createFileRoute('/')({
   component: App,
@@ -156,7 +157,7 @@ function App() {
 
       // Prevent self-connection
       if (params.source === params.target) {
-        alert('Cannot connect a node to itself!')
+        toast('Cannot connect a node to itself!')
         return
       }
 
@@ -168,13 +169,13 @@ function App() {
       )
 
       if (sourceHasEdge) {
-        alert('Source handle can only have one outgoing connection!')
+        toast('Source handle can only have one outgoing connection!')
         return
       }
 
       // Prevent circular flows - this is key for chatbot flows
       if (wouldCreateCycle(params.source, params.target)) {
-        alert('Cannot create circular connections! Chatbot flows must be linear.')
+        toast('Cannot create circular connections! Chatbot flows must be linear.')
         return
       }
 
@@ -259,12 +260,12 @@ function App() {
 
   const saveChanges = () => {
     if (!areAllNodesConnected()) {
-      alert('Cannot save! All nodes must be connected to the flow.')
+      toast('Cannot save! All nodes must be connected to the flow.')
       return
     }
     
     // Currently does nothing as specified, but now validates connections
-    alert('Flow saved successfully! All nodes are properly connected.')
+    toast('Flow saved successfully! All nodes are properly connected.')
   }
 
   const canSave = areAllNodesConnected()
