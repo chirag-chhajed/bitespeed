@@ -1,4 +1,4 @@
-import type { Connection, Edge, EdgeChange, Node, NodeChange, NodeProps } from '@xyflow/react'
+import type { Connection, Edge, EdgeChange, Node, NodeChange, NodeProps, NodeTypes } from '@xyflow/react'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   addEdge,
@@ -56,7 +56,7 @@ const edgesAtom = atomWithStorage<Edge[]>('chatbot-edges', [])
 const nodeCounterAtom = atomWithStorage('chatbot-node-counter', 2)
 
 // Custom Message Node Component
-function MessageNode({ data, isConnectable }: NodeProps<MessageData>) {
+function MessageNode({ data, isConnectable }: NodeProps) {
   return (
     <div className="px-3 py-2 shadow-sm rounded-lg bg-card border-2 border-border min-w-[160px] sm:min-w-[200px] max-w-[200px] sm:max-w-none">
       <Handle
@@ -84,7 +84,7 @@ function MessageNode({ data, isConnectable }: NodeProps<MessageData>) {
   )
 }
 
-const nodeTypes = {
+const nodeTypes:NodeTypes = {
   messageNode: MessageNode,
 }
 
@@ -117,7 +117,10 @@ function App() {
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
       setNodes((currentNodes) => {
-        const next = applyNodeChanges(changes, currentNodes)
+        const next = applyNodeChanges(
+          changes,
+          currentNodes,
+        ) as Node<MessageData>[]
         setPersistedNodes(next)
         return next
       })
@@ -255,7 +258,7 @@ function App() {
   const createMessageNode = () => {
     if (!messageText.trim()) return
 
-    const newNode: Node = {
+    const newNode: Node<MessageData> = {
       id: nodeIdCounter.toString(),
       type: 'messageNode',
       position: { x: Math.random() * 300 + 50, y: Math.random() * 300 + 50 },
