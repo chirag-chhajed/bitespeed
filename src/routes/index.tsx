@@ -3,11 +3,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import {
   addEdge,
   Background,
-
   Controls,
-
   Handle,
-
   Position,
   ReactFlow,
   useEdgesState,
@@ -18,6 +15,17 @@ import { atomWithStorage } from 'jotai/utils'
 import { MessageCircle } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -252,17 +260,15 @@ function App() {
     setMessageText('')
   }
 
-  const clearAll = () => {
-    if (confirm('Are you sure you want to clear all nodes and connections?')) {
-      setNodes([])
-      setEdges([])
-      setPersistedNodes([])
-      setPersistedEdges([])
-      setNodeIdCounter(1)
-      setSelectedNodeId(null)
-      setShowSettings(false)
-      setMessageText('')
-    }
+  const handleClearAll = () => {
+    setNodes([])
+    setEdges([])
+    setPersistedNodes([])
+    setPersistedEdges([])
+    setNodeIdCounter(1)
+    setSelectedNodeId(null)
+    setShowSettings(false)
+    setMessageText('')
   }
 
   const saveChanges = () => {
@@ -287,9 +293,27 @@ function App() {
             Chatbot Flow Builder
           </h1>
           <div className="flex gap-2">
-            <Button onClick={clearAll} variant="outline" size="sm">
-              Clear All
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline">
+                  Clear All
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear All Nodes?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete all nodes and connections from your chatbot flow.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearAll} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Clear All
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Button
               onClick={saveChanges}
               disabled={!canSave}
@@ -364,13 +388,30 @@ function App() {
                                 >
                                   Update Node
                                 </Button>
-                                <Button
-                                  onClick={deleteSelectedNode}
-                                  variant="destructive"
-                                  size="sm"
-                                >
-                                  Delete
-                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      variant="destructive"
+                                      size="sm"
+                                    >
+                                      Delete
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete Node?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        This action cannot be undone. This will permanently delete this node and all its connections.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction onClick={deleteSelectedNode} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                        Delete Node
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
                               </>
                             )
                           : (
